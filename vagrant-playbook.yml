@@ -1,0 +1,86 @@
+---
+
+- hosts: all
+  become: true
+  become_user: root
+
+  tasks:
+
+    - name: "Add saltstack repository"
+      yum_repository:
+        name: saltstack-repo
+        description: EPEL YUM repo
+        enabled: yes
+        gpgcheck: yes
+        gpgkey:
+          - https://repo.saltstack.com/yum/redhat/$releasever/$basearch/latest/SALTSTACK-GPG-KEY.pub
+          - https://repo.saltstack.com/yum/redhat/$releasever/$basearch/latest/base/RPM-GPG-KEY-CentOS-7
+        baseurl: https://repo.saltstack.com/yum/redhat/$releasever/$basearch/latest
+
+    - name: "Install EPEL"
+      yum:
+        name: epel-release
+        state: installed
+
+    - name: "Install dependencies and tools"
+      yum:
+        name: "{{ item }}"
+        state: installed
+        disable_gpg_check: yes
+      with_items:
+        - python2-pip
+        - wget
+        - jq
+        - mc
+
+- hosts: salt-master
+  become: true
+  become_user: root
+
+  tasks:
+
+    - name: "Install SALT MASTER"
+      yum:
+        name: salt-master
+        state: installed
+
+    - name: "Start SALT MASTER service"
+      systemd:
+        name: salt-master
+        enabled: yes
+        state: started
+
+- hosts: salt-minion
+  become: true
+  become_user: root
+
+  tasks:
+
+    - name: "Install SALT MINION"
+      yum:
+        name: salt-minion
+        state: installed
+
+    - name: "Add salt master hostname to config"
+      lineinfile:
+        path: /etc/salt/minion
+        regexp: '^#master:'
+        backrefs: yes
+        line: "master: {{ groups['salt-master'][0] }}"
+
+    - name: "Start SALT MINION service"
+      systemd:
+        name: salt-minion
+        enabled: yes
+        state: started
+
+    - name: "salt master hostname"
+      debug:
+        msg: "{{ groups['salt-master'][0] }}"
+
+    - name: "Accept minion key"
+      shell: |
+        salt-key -A -y
+      delegate_to: "{{ groups['salt-master'][0] }}"
+
+...
